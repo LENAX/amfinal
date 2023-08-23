@@ -54,7 +54,6 @@ split2 <- sample.split(temp_data$loan_status, SplitRatio = 0.5)
 validation_data <- temp_data[split2, ]
 test_data <- temp_data[!split2, ]
 
-## By Leah
 ## Load necessary libraries
 install.packages("gridExtra")
 library(ggplot2)
