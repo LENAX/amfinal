@@ -18,10 +18,12 @@ library(rpart)
 library(rpart.plot)
 library(rattle)
 library(caret)
+library(dplyr)
+
 
 # Clear all objects in the workspace
 rm(list = ls())
-setwd("/Users/stevelan/Desktop/MBA/Analytics for Managers/final_project/")
+setwd("./")
 loan <- read.csv("loan_approval_dataset.csv")
 # View(loan)
 # summary(loan)
@@ -76,6 +78,10 @@ numerical_cols_to_visualize <- c(c("loan_status"), numerical_columns)
 num_var_plot <- ggpairs(train_data, columns = numerical_cols_to_visualize)
 # num_var_plot
 # ggsave("num_var_plot.png", num_var_plot, 'png', './')
+
+# clean erroneous features
+# residential_assets_value could not be negative
+train_data <- train_data[train_data$residential_assets_value >= 0, ]
 
 # Prepare X and Y for models
 X_train <- subset(train_data, select = -loan_status)
@@ -160,3 +166,61 @@ vld_performance <- get_performance_metrics(vld_confusion_matrix)
 # print(performance)
 #    accuracy precision    recall  f1_score
 # 1 0.9703125 0.9588378 0.9949749 0.9765721
+
+# We can see the model achieve high out of sample accuracy easily
+
+# Let's try to build a logistic regression model
+# Let's start with one variable
+# AIC: 1587.4, BIC: 1599.425
+lm1 <- glm(Y_train ~ cibil_score, data = X_train, family = "binomial")
+BIC(lm1)
+summary(lm1)
+
+# AIC: 1454.7, BIC: 1472.731
+lm2 <- glm(Y_train ~ cibil_score + loan_term, data = X_train, family = "binomial")
+BIC(lm2)
+summary(lm2)
+
+# AIC: 1455.6, BIC:  1479.63
+lm3 <- glm(Y_train ~ cibil_score + loan_term + loan_amount, data = X_train, family = "binomial")
+BIC(lm3)
+summary(lm3)
+
+# Best one!
+# AIC: 1406.3, BIC(lm3): 1436.27
+lm3 <- glm(Y_train ~ cibil_score + loan_term + loan_amount + income_annum, data = X_train, family = "binomial")
+BIC(lm3)
+summary(lm3)
+
+lm4 <- glm(Y_train ~ cibil_score + loan_term + loan_amount + income_annum + bank_asset_value, data = X_train, family = "binomial")
+BIC(lm4)
+summary(lm4)
+
+lm1_probs <- predict(lm1, newdata = X_valid, type = "response")
+lm1_pred_classes <- ifelse(lm1_probs > 0.5, 1, 0)
+
+cm_lm1 <- table(Actual = Y_valid, Predicted = lm1_pred_classes)
+get_performance_metrics(cm_lm1)
+
+
+lm2_probs <- predict(lm2, newdata = X_valid, type = "response")
+lm2_pred_classes <- ifelse(lm2_probs > 0.5, 1, 0)
+cm_lm2 <- table(Actual = Y_valid, Predicted = lm2_pred_classes)
+get_performance_metrics(cm_lm2)
+
+
+lm3_probs <- predict(lm3, newdata = X_valid, type = "response")
+lm3_pred_classes <- ifelse(lm3_probs > 0.5, 1, 0)
+
+#       Predicted
+# Actual   0   1
+#      0 218  24
+#      1  20 378
+cm_lm3 <- table(Actual = Y_valid, Predicted = lm3_pred_classes)
+get_performance_metrics(cm_lm3)
+
+lm4_probs <- predict(lm4, newdata = X_valid, type = "response")
+lm4_pred_classes <- ifelse(lm4_probs > 0.5, 1, 0)
+
+cm_lm4 <- table(Actual = Y_valid, Predicted = lm4_pred_classes)
+get_performance_metrics(cm_lm4)
