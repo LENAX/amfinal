@@ -1,37 +1,41 @@
 # Predictive analysis of the loan approval dataset
-# We will build a predictive model to help our company to improve the efficiency and accuracy of home loan approval. 
+# We will build a predictive model to help our company to improve the efficiency and accuracy of home loan approval.
 
 # install.packages("partition")
 # install.packages("caret")
 # install.packages("caTools")
 # install.packages("dummies")
+# install.packages("rpart")
+# install.packages("rpart.plot")
+# install.packages("rattle")
+
 library(dummies)
 library(caTools)
 library(GGally)
 library(car)
 library(ggplot2)
-library(dplyr)
-library(tidyverse)
-# library(splitTools)
-# library(partition)
-# library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(caret)
 
-#Clear all objects in the workspace
-rm(list=ls())
-setwd("~/Documents/am")
+# Clear all objects in the workspace
+rm(list = ls())
+setwd("/Users/stevelan/Desktop/MBA/Analytics for Managers/final_project/")
 loan <- read.csv("loan_approval_dataset.csv")
-View(loan)
-summary(loan)
+# View(loan)
+# summary(loan)
 loan <- subset(loan, select = -loan_id)
 
-# preprocess categorical data to dummy variables
-data %>%
-    mutate(dummy = 1) %>%
-    spread(key = Reporting_Airline, value = dummy, fill = 0) %>%
-    slice(1:5)
+# Label Encoding
+loan$education <- ifelse(loan$education == " Not Graduate", 0, 1)
+loan$self_employed <- ifelse(loan$self_employed == " No", 0, 1)
+loan$loan_status <- ifelse(loan$loan_status == " Rejected", 0, 1)
 
 # Create a scatterplot matrix using ggpairs function
-ggpairs(loan)
+overview <- ggpairs(loan)
+# ggsave("overview.png", overview, "png", "./")
+
 
 # Create a train-validation-test split
 set.seed(3451)
@@ -40,8 +44,8 @@ set.seed(3451)
 #     p = c(train = 0.6, valid = 0.3, test = 0.1))
 # str(inds)
 split1 <- sample.split(loan$loan_status, SplitRatio = 0.7)
-train_data <- iris[split1, ]
-temp_data <- iris[!split1, ]
+train_data <- loan[split1, ]
+temp_data <- loan[!split1, ]
 
 summary(train_data)
 
@@ -50,49 +54,109 @@ split2 <- sample.split(temp_data$loan_status, SplitRatio = 0.5)
 validation_data <- temp_data[split2, ]
 test_data <- temp_data[!split2, ]
 
-## Load necessary libraries
-install.packages("gridExtra")
-library(ggplot2)
-library(gridExtra)
-
-
-#Dropping Loan ID
-loan <- loan %>% select(-loan_id)
-str(loan)
-
 # List of numerical columns to plot
-num_cols <- c('income_annum', 'loan_amount', 'loan_term', 'cibil_score',
-              'residential_assets_value', 'commercial_assets_value',
-              'luxury_assets_value', 'bank_asset_value')
+numerical_columns <- c(
+    "income_annum", "loan_amount", "loan_term", "cibil_score",
+    "residential_assets_value", "commercial_assets_value",
+    "luxury_assets_value", "bank_asset_value"
+)
 
 # List of categorical columns to plot
-cat_cols <- c('education', 'self_employed', 'loan_status')
-View(loan)
-
-# Create histograms using ggplot2
-plot_list <- lapply(num_cols, function(col) {
-  ggplot(data = loan, aes(x = .data[[col]])) +
-    geom_histogram(binwidth = 20, color = "black", fill = "lightblue") +
-    labs(title = paste("Distribution of", col))
-})
-
-# Arranging and displaying plots
-grid.arrange(grobs = plot_list, ncol = 2)
-
-# Label Encoding
-loan$education <- ifelse(loan$education == ' Not Graduate', 0, 1)
-loan$self_employed <- ifelse(loan$self_employed == ' No', 0, 1)
-loan$loan_status <- ifelse(loan$loan_status == ' Rejected', 0, 1)
+categorical_columns <- c("education", "self_employed", "loan_status")
+# View(loan)
 
 # visualize the training set and see what we can find between features and the target variable
 # Create pairwise histogram
 categorical_cols_to_visualize <- c(c("loan_status"), categorical_columns)
 categorical_var_plot <- ggpairs(train_data, columns = categorical_cols_to_visualize)
 # ggsave("cat_var_hist.png", categorical_var_plot, 'png', './')
+# categorical_var_plot
 
 numerical_cols_to_visualize <- c(c("loan_status"), numerical_columns)
 num_var_plot <- ggpairs(train_data, columns = numerical_cols_to_visualize)
 # num_var_plot
-ggsave("num_var_plot.png", num_var_plot, 'png', './')
-# train_data$numerical_columns
+# ggsave("num_var_plot.png", num_var_plot, 'png', './')
 
+# Prepare X and Y for models
+X_train <- subset(train_data, select = -loan_status)
+Y_train <- train_data$loan_status
+
+# dev data, we can tune hyperparameters
+X_valid <- subset(validation_data, select = -loan_status)
+Y_valid <- validation_data$loan_status
+
+# test data, don't touch it till producing the final result
+X_test <- subset(test_data, select = -loan_status)
+Y_test <- test_data$loan_status
+
+# check for nans
+# which(colSums(is.na(X)) > 0)
+# all(is.na(Y))
+
+# Build a decision tree model
+tree_model <- rpart(Y_train ~ ., data = X_train, method = "class")
+
+# png(filename = "decision_tree.png", width = 800, height = 600)
+rpart.plot(tree_model, main = "Decision Tree for House Loan")
+# dev.off()
+
+# Evaluate in-sample performance
+in_sample_predictions <- predict(tree_model, newdata = X_train, type = "class")
+table(Actual = Y_train, Predicted = in_sample_predictions)
+
+# Evaluate out-of-sample performance on the dev set
+out_sample_predictions <- predict(tree_model, newdata = X_valid, type = "class")
+
+get_confusion_matrix <- function(model, X, Y) {
+    Y_pred <- predict(model, newdata = X, type = "class")
+    return(table(Actual = Y, Predicted = Y_pred))
+}
+
+accuracy <- function(confusion_matrix) {
+    acc <- (confusion_matrix[1, 1] + confusion_matrix[2, 2]) / sum(confusion_matrix)
+    return(acc)
+}
+
+# TP / (TP + FP)
+precision <- function(confusion_matrix) {
+    precision_ <- confusion_matrix[2, 2] / (confusion_matrix[2, 2] + confusion_matrix[1, 2])
+    return(precision_)
+}
+
+# TP / (TP + FN)
+recall <- function(confusion_matrix) {
+    rec <- confusion_matrix[2, 2] / (confusion_matrix[2, 2] + confusion_matrix[2, 1])
+    return(rec)
+}
+
+f1_score <- function(confusion_matrix) {
+    f1_score_ <- 2 * ((precision(confusion_matrix) * recall(confusion_matrix)) / (precision(confusion_matrix) + recall(confusion_matrix)))
+    return(f1_score_)
+}
+
+# calculate accuracy, precision, recall, and f1 score
+get_performance_metrics <- function(confusion_matrix) {
+    acc <- accuracy(confusion_matrix)
+    prec <- precision(confusion_matrix)
+    recall_ <- recall(confusion_matrix)
+    f1_score_ <- f1_score(confusion_matrix)
+
+    model_performance <- data.frame(
+        accuracy = acc,
+        precision = prec,
+        recall = recall_,
+        f1_score = f1_score_
+    )
+
+    return(model_performance)
+}
+
+# confusion_matrix <- table(Actual = Y_valid, Predicted = out_sample_predictions)
+train_confusion_matrix <- get_confusion_matrix(tree_model, X_train, Y_train)
+train_performance <- get_performance_metrics(train_confusion_matrix)
+
+vld_confusion_matrix <- get_confusion_matrix(tree_model, X_valid, Y_valid)
+vld_performance <- get_performance_metrics(vld_confusion_matrix)
+# print(performance)
+#    accuracy precision    recall  f1_score
+# 1 0.9703125 0.9588378 0.9949749 0.9765721
